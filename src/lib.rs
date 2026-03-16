@@ -32,6 +32,7 @@ pub fn router(generator: Arc<dyn ShortCodeGenerator>) -> Router {
 enum AppError {
     NotFound,
     InvalidUrl(String),
+    #[allow(dead_code)]
     InternalError,
 }
 
@@ -113,6 +114,7 @@ async fn shorten(
         if !store.contains_key(&candidate) {
             break candidate;
         }
+        println!("(duplicate, retry) {candidate}")
     };
     store.insert(short_code.clone(), payload.url.clone());
     println!("(shorten) {short_code} -> {}", payload.url);
