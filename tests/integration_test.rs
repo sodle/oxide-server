@@ -1,9 +1,13 @@
 use axum_test::TestServer;
-use oxide_server::{router, ErrorResponse, HealthOutput, ShortenUrlOutput};
+use oxide_server::{
+    router, ErrorResponse, HealthOutput, RandomShortCodeGenerator, ShortCodeGenerator,
+    ShortenUrlOutput,
+};
 use serde_json::json;
+use std::sync::{Arc, Mutex};
 
 fn test_server() -> TestServer {
-    TestServer::new(router())
+    TestServer::new(router(Arc::new(RandomShortCodeGenerator)))
 }
 
 #[tokio::test]
@@ -49,4 +53,55 @@ async fn test_miss() {
     assert_eq!(visit_response.status_code(), 404);
     let shorten_error: ErrorResponse = visit_response.json();
     assert_eq!(shorten_error.error, "Not found");
+}
+
+struct ScriptedShortCodeGenerator {
+    codes: Vec<String>,
+    index: Mutex<usize>,
+}
+
+impl ShortCodeGenerator for ScriptedShortCodeGenerator {
+    fn generate(&self) -> String {
+        let mut index = self.index.lock().unwrap();
+
+        let code: String = self.codes[*index].clone();
+        *index += 1;
+        code
+    }
+}
+
+fn test_scripted_server(codes: Vec<String>) -> TestServer {
+    let generator = ScriptedShortCodeGenerator {
+        codes,
+        index: Mutex::new(0),
+    };
+    TestServer::new(router(Arc::new(generator)))
+}
+
+#[tokio::test]
+async fn test_collision() {
+    let mut codes = Vec::new();
+    codes.push(String::from("thiswillconflict"));
+    codes.push(String::from("thiswillconflict"));
+    codes.push(String::from("thiswillnotconflict"));
+
+    let server = test_scripted_server(codes);
+
+    let response = server
+        .post("/shorten")
+        .json(&json!({"url": "https://google.com"}))
+        .await;
+    assert_eq!(response.status_code(), 200);
+    let body: ShortenUrlOutput = response.json();
+    let first_short_code = body.short_code;
+
+    let response = server
+        .post("/shorten")
+        .json(&json!({"url": "https://scoott.blog"}))
+        .await;
+    assert_eq!(response.status_code(), 200);
+    let body: ShortenUrlOutput = response.json();
+    let second_short_code = body.short_code;
+
+    assert_ne!(first_short_code, second_short_code);
 }

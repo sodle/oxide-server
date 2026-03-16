@@ -9,16 +9,24 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use url::Url;
 
-type SharedStore = Arc<Mutex<HashMap<String, String>>>;
+#[derive(Clone)]
+struct AppState {
+    store: SharedStore,
+    generator: SharedGenerator,
+}
 
-pub fn router() -> Router {
+type SharedStore = Arc<Mutex<HashMap<String, String>>>;
+type SharedGenerator = Arc<dyn ShortCodeGenerator>;
+
+pub fn router(generator: Arc<dyn ShortCodeGenerator>) -> Router {
     let store: SharedStore = Arc::new(Mutex::new(HashMap::new()));
+    let state = AppState { store, generator };
 
     Router::new()
         .route("/health", get(health))
         .route("/shorten", post(shorten))
         .route("/{code}", get(code))
-        .with_state(store)
+        .with_state(state)
 }
 
 enum AppError {
@@ -81,16 +89,27 @@ pub struct ShortenUrlOutput {
     pub short_code: String,
 }
 
+pub trait ShortCodeGenerator: Send + Sync {
+    fn generate(&self) -> String;
+}
+
+pub struct RandomShortCodeGenerator;
+impl ShortCodeGenerator for RandomShortCodeGenerator {
+    fn generate(&self) -> String {
+        rand::distr::Alphanumeric.sample_string(&mut rand::rng(), 8)
+    }
+}
+
 async fn shorten(
-    State(store): State<SharedStore>,
+    State(state): State<AppState>,
     Json(payload): Json<ShortenUrlInput>,
 ) -> Result<Json<ShortenUrlOutput>, AppError> {
-    let mut store = store.lock().unwrap();
+    let mut store = state.store.lock().unwrap();
 
     Url::parse(&payload.url).map_err(|e| AppError::InvalidUrl(e.to_string()))?;
 
     let short_code = loop {
-        let candidate = rand::distr::Alphanumeric.sample_string(&mut rand::rng(), 8);
+        let candidate = state.generator.generate();
         if !store.contains_key(&candidate) {
             break candidate;
         }
@@ -102,10 +121,10 @@ async fn shorten(
 }
 
 async fn code(
-    State(store): State<SharedStore>,
+    State(state): State<AppState>,
     Path(code): Path<String>,
 ) -> Result<Redirect, AppError> {
-    let store = store.lock().unwrap();
+    let store = state.store.lock().unwrap();
 
     match store.get(&code) {
         None => {
