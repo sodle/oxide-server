@@ -1,4 +1,4 @@
-use axum_test::TestServer;
+use axum_test::{TestResponse, TestServer};
 use oxide_server::{
     router, ErrorResponse, HealthOutput, RandomShortCodeGenerator, ShortCodeGenerator,
     ShortenUrlOutput,
@@ -8,6 +8,18 @@ use std::sync::{Arc, Mutex};
 
 fn test_server() -> TestServer {
     TestServer::new(router(Arc::new(RandomShortCodeGenerator)))
+}
+
+async fn shorten_url(server: &TestServer, url: &str) -> ShortenUrlOutput {
+    server
+        .post("/shorten")
+        .json(&json!({"url": url}))
+        .await
+        .json()
+}
+
+async fn follow_short_code(server: &TestServer, short_code: &str) -> TestResponse {
+    server.get(&format!("/{short_code}")).await
 }
 
 #[tokio::test]
@@ -20,14 +32,8 @@ async fn test_health() {
 #[tokio::test]
 async fn test_hit() {
     let server = test_server();
-    let shorten_response: ShortenUrlOutput = server
-        .post("/shorten")
-        .json(&json!({"url": "https://google.com"}))
-        .await
-        .json();
-    let visit_response = server
-        .get(&format!("/{}", shorten_response.short_code))
-        .await;
+    let shorten_response = shorten_url(&server, "https://google.com").await;
+    let visit_response = follow_short_code(&server, &shorten_response.short_code).await;
     assert_eq!(visit_response.status_code(), 308);
     assert_eq!(visit_response.header("Location"), "https://google.com");
 }
@@ -49,7 +55,7 @@ async fn test_invalid() {
 #[tokio::test]
 async fn test_miss() {
     let server = test_server();
-    let visit_response = server.get("/nothings").await;
+    let visit_response = follow_short_code(&server, "thisisinvalid").await;
     assert_eq!(visit_response.status_code(), 404);
     let shorten_error: ErrorResponse = visit_response.json();
     assert_eq!(shorten_error.error, "Not found");
@@ -87,21 +93,8 @@ async fn test_collision() {
 
     let server = test_scripted_server(codes);
 
-    let response = server
-        .post("/shorten")
-        .json(&json!({"url": "https://google.com"}))
-        .await;
-    assert_eq!(response.status_code(), 200);
-    let body: ShortenUrlOutput = response.json();
-    let first_short_code = body.short_code;
-
-    let response = server
-        .post("/shorten")
-        .json(&json!({"url": "https://scoott.blog"}))
-        .await;
-    assert_eq!(response.status_code(), 200);
-    let body: ShortenUrlOutput = response.json();
-    let second_short_code = body.short_code;
+    let first_short_code = shorten_url(&server, "https://google.com").await.short_code;
+    let second_short_code = shorten_url(&server, "https://scoott.blog").await.short_code;
 
     assert_ne!(first_short_code, second_short_code);
 }
