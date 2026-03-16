@@ -102,7 +102,12 @@ async fn shorten(
         Err(error) => return Err(AppError::InvalidUrl(error.to_string())),
     }
 
-    let short_code = rand::distr::Alphanumeric.sample_string(&mut rand::rng(), 8);
+    let short_code = loop {
+        let candidate = rand::distr::Alphanumeric.sample_string(&mut rand::rng(), 8);
+        if !store.contains_key(&candidate) {
+            break candidate;
+        }
+    };
     store.insert(short_code.clone(), payload.url.clone());
     println!("(shorten) {short_code} -> {}", payload.url);
 
