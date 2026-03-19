@@ -1,3 +1,7 @@
+pub mod data_store;
+
+use crate::data_store::{DataStore, DataStoreError};
+use crate::AppError::{InternalError, InvalidUrl, NotFound};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
@@ -5,22 +9,20 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use rand::distr::SampleString;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use url::Url;
 
 #[derive(Clone)]
 struct AppState {
-    store: SharedStore,
-    generator: SharedGenerator,
+    generator: Arc<dyn ShortCodeGenerator>,
+    data_store: Arc<dyn DataStore>,
 }
 
-type SharedStore = Arc<Mutex<HashMap<String, String>>>;
-type SharedGenerator = Arc<dyn ShortCodeGenerator>;
-
-pub fn router(generator: Arc<dyn ShortCodeGenerator>) -> Router {
-    let store: SharedStore = Arc::new(Mutex::new(HashMap::new()));
-    let state = AppState { store, generator };
+pub fn router(generator: Arc<dyn ShortCodeGenerator>, data_store: Arc<dyn DataStore>) -> Router {
+    let state = AppState {
+        generator,
+        data_store,
+    };
 
     Router::new()
         .route("/health", get(health))
@@ -32,7 +34,6 @@ pub fn router(generator: Arc<dyn ShortCodeGenerator>) -> Router {
 enum AppError {
     NotFound,
     InvalidUrl(String),
-    #[allow(dead_code)]
     InternalError,
 }
 
@@ -44,21 +45,21 @@ pub struct ErrorResponse {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         match self {
-            AppError::NotFound => (
+            NotFound => (
                 StatusCode::NOT_FOUND,
                 Json(ErrorResponse {
                     error: String::from("Not found"),
                 }),
             )
                 .into_response(),
-            AppError::InvalidUrl(error) => (
+            InvalidUrl(error) => (
                 StatusCode::BAD_REQUEST,
                 Json(ErrorResponse {
                     error: format!("Invalid URL: {error}"),
                 }),
             )
                 .into_response(),
-            AppError::InternalError => (
+            InternalError => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
                     error: String::from("Internal error"),
@@ -105,38 +106,35 @@ async fn shorten(
     State(state): State<AppState>,
     Json(payload): Json<ShortenUrlInput>,
 ) -> Result<Json<ShortenUrlOutput>, AppError> {
-    let mut store = state.store.lock().unwrap();
+    Url::parse(&payload.url).map_err(|e| InvalidUrl(e.to_string()))?;
 
-    Url::parse(&payload.url).map_err(|e| AppError::InvalidUrl(e.to_string()))?;
-
-    let short_code = loop {
-        let candidate = state.generator.generate();
-        if !store.contains_key(&candidate) {
-            break candidate;
-        }
-        println!("(duplicate, retry) {candidate}")
+    let short_code = {
+        let short_code = loop {
+            let candidate = state.generator.generate();
+            match state.data_store.exists(&candidate).await {
+                Ok(false) => break candidate,
+                Ok(true) => println!("(duplicate, retry) {candidate}"),
+                Err(_) => return Err(InternalError),
+            }
+        };
+        println!("(shorten) {short_code} -> {}", payload.url);
+        short_code
     };
-    store.insert(short_code.clone(), payload.url.clone());
-    println!("(shorten) {short_code} -> {}", payload.url);
 
-    Ok(Json::from(ShortenUrlOutput { short_code }))
+    match state.data_store.put(&short_code, &payload.url).await {
+        Ok(_) => Ok(Json::from(ShortenUrlOutput { short_code })),
+        Err(_) => Err(InternalError),
+    }
 }
 
 async fn code(
     State(state): State<AppState>,
     Path(code): Path<String>,
 ) -> Result<Redirect, AppError> {
-    let store = state.store.lock().unwrap();
-
-    match store.get(&code) {
-        None => {
-            println!("{code} -> (miss)");
-            Err(AppError::NotFound)
-        }
-        Some(url) => {
-            println!("{code} -> {url} (hit)");
-            Ok(Redirect::permanent(url))
-        }
+    match state.data_store.get(&code).await {
+        Ok(record) => Ok(Redirect::permanent(record.url.as_str())),
+        Err(DataStoreError::NotFound) => Err(NotFound),
+        Err(_) => Err(InternalError),
     }
 }
 

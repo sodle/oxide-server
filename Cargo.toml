@@ -4,8 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-axum = "0.8.8"
+async-trait = "0.1.89"
+aws-config = { version = "1.8.15", features = ["credentials-login"] }
+aws-sdk-dynamodb = "1.109.0"
+axum = { version = "0.8.8", features = ["macros"] }
 axum-test = "19.1.1"
+dotenv = "0.15.0"
 rand = "0.10.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
