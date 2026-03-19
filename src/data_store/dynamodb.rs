@@ -44,7 +44,7 @@ fn extract_string(
         },
         None => {
             println!("Missing field {key}");
-            Err(NotFound)
+            Err(DataTypeError)
         }
     }
 }
@@ -109,5 +109,46 @@ impl DataStore for DynamoDbDataStore {
             Err(NotFound) => Ok(false),
             Err(err) => Err(err),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aws_sdk_dynamodb::types::AttributeValue::N;
+    #[test]
+    fn test_load_url_record() {
+        let mut record = HashMap::new();
+        record.insert(String::from("short_code"), S(String::from("asdf")));
+        record.insert(String::from("url"), S(String::from("https://google.com")));
+
+        let output = GetItemOutput::builder().set_item(Some(record)).build();
+
+        let result = load_url_record(output).unwrap();
+        assert_eq!(result.short_code, "asdf");
+        assert_eq!(result.url, "https://google.com");
+    }
+
+    #[test]
+    fn test_load_url_record_missing() {
+        let output = GetItemOutput::builder().build();
+        let error = load_url_record(output).err().unwrap();
+        assert_eq!(error, NotFound);
+    }
+
+    #[test]
+    fn test_extract_string_missing() {
+        let map = HashMap::new();
+        let error = extract_string(&map, "asdf").err().unwrap();
+        assert_eq!(error, DataTypeError);
+    }
+
+    #[test]
+    fn test_extract_string_wrong_type() {
+        let mut map = HashMap::new();
+        map.insert(String::from("asdf"), N(String::from("42")));
+
+        let error = extract_string(&map, "asdf").err().unwrap();
+        assert_eq!(error, DataTypeError);
     }
 }

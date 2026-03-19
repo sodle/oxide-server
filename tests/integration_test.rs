@@ -1,27 +1,17 @@
-use axum_test::{TestResponse, TestServer};
+mod common;
+
+use crate::common::{follow_short_code, shorten_url};
+use axum_test::TestServer;
 use oxide_server::data_store::in_memory::InMemoryDataStore;
 use oxide_server::{
-    router, ErrorResponse, HealthOutput, RandomShortCodeGenerator, ShortCodeGenerator,
-    ShortenUrlOutput,
+    router, ErrorResponse, HealthOutput, RandomShortCodeGenerator, ShortenUrlOutput,
 };
 use serde_json::json;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 async fn test_server() -> TestServer {
     let store = Arc::new(InMemoryDataStore::new());
     TestServer::new(router(Arc::new(RandomShortCodeGenerator), store))
-}
-
-async fn shorten_url(server: &TestServer, url: &str) -> ShortenUrlOutput {
-    server
-        .post("/shorten")
-        .json(&json!({"url": url}))
-        .await
-        .json()
-}
-
-async fn follow_short_code(server: &TestServer, short_code: &str) -> TestResponse {
-    server.get(&format!("/{short_code}")).await
 }
 
 #[tokio::test]
@@ -35,7 +25,11 @@ async fn test_health() {
 async fn test_hit() {
     let server = test_server().await;
     let shorten_response = shorten_url(&server, "https://google.com").await;
-    let visit_response = follow_short_code(&server, &shorten_response.short_code).await;
+    let visit_response = follow_short_code(
+        &server,
+        &shorten_response.json::<ShortenUrlOutput>().short_code,
+    )
+    .await;
     assert_eq!(visit_response.status_code(), 308);
     assert_eq!(visit_response.header("Location"), "https://google.com");
 }
@@ -61,43 +55,4 @@ async fn test_miss() {
     assert_eq!(visit_response.status_code(), 404);
     let shorten_error: ErrorResponse = visit_response.json();
     assert_eq!(shorten_error.error, "Not found");
-}
-
-struct ScriptedShortCodeGenerator {
-    codes: Vec<String>,
-    index: Mutex<usize>,
-}
-
-impl ShortCodeGenerator for ScriptedShortCodeGenerator {
-    fn generate(&self) -> String {
-        let mut index = self.index.lock().unwrap();
-
-        let code: String = self.codes[*index].clone();
-        *index += 1;
-        code
-    }
-}
-
-async fn test_scripted_server(codes: Vec<String>) -> TestServer {
-    let generator = ScriptedShortCodeGenerator {
-        codes,
-        index: Mutex::new(0),
-    };
-    let store = Arc::new(InMemoryDataStore::new());
-    TestServer::new(router(Arc::new(generator), store))
-}
-
-#[tokio::test]
-async fn test_collision() {
-    let mut codes = Vec::new();
-    codes.push(String::from("thiswillconflict"));
-    codes.push(String::from("thiswillconflict"));
-    codes.push(String::from("thiswillnotconflict"));
-
-    let server = test_scripted_server(codes).await;
-
-    let first_short_code = shorten_url(&server, "https://google.com").await.short_code;
-    let second_short_code = shorten_url(&server, "https://scoott.blog").await.short_code;
-
-    assert_ne!(first_short_code, second_short_code);
 }

@@ -8,6 +8,7 @@ pub struct UrlRecord {
     pub url: String,
 }
 
+#[derive(Debug, PartialEq)]
 pub enum DataStoreError {
     NotFound,
     ConnectionError,
