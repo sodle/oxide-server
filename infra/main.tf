@@ -6,27 +6,23 @@ terraform {
       source  = "hashicorp/aws" # Specify the source of the AWS provider
       version = "~> 4.0"        # Use a version of the AWS provider that is compatible with version
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "3.7.2"
+    }
+    null = {
+      source  = "hashicorp/null"
+      version = "3.2.4"
+    }
   }
 }
 
 provider "aws" {
-  region = "us-west-2"
+  region = var.aws_region
 
   default_tags {
     tags = {
       project = "oxide"
     }
   }
-}
-
-resource "aws_dynamodb_table" "url_table" {
-  name         = "oxide-urls"
-  billing_mode = "PAY_PER_REQUEST"
-
-  attribute {
-    name = "short_code"
-    type = "S"
-  }
-
-  hash_key = "short_code"
 }

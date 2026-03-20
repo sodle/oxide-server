@@ -1,14 +1,47 @@
 use oxide_server::data_store::dynamodb::DynamoDbDataStore;
 use oxide_server::{router, RandomShortCodeGenerator};
 use std::sync::Arc;
+use tokio::signal;
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+
+    tracing::info!("signal received, starting graceful shutdown");
+}
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt::init(); // Initialize the subscriber.
     dotenv::dotenv().ok();
+    let bind_addr = "0.0.0.0:3000";
 
     let store = Arc::new(DynamoDbDataStore::new().await);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    let listener = tokio::net::TcpListener::bind(bind_addr).await.unwrap();
     let router = router(Arc::new(RandomShortCodeGenerator), store);
-    axum::serve(listener, router).await.unwrap();
+    println!("Listening on {bind_addr}");
+    axum::serve(listener, router)
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+        .unwrap();
 }
