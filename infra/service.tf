@@ -1,4 +1,4 @@
-data "aws_iam_policy_document" "service_policy" {
+data "aws_iam_policy_document" "task_policy" {
   statement {
     actions   = ["dynamodb:PutItem", "dynamodb:GetItem"]
     resources = [aws_dynamodb_table.url_table.arn]
@@ -10,9 +10,9 @@ data "aws_iam_policy_document" "service_policy" {
   }
 }
 
-resource "aws_iam_policy" "service_policy" {
-  policy = data.aws_iam_policy_document.service_policy.json
-  name   = "oxide_server_policy"
+resource "aws_iam_policy" "task_policy" {
+  policy = data.aws_iam_policy_document.task_policy.json
+  name   = "oxide_task_policy"
 }
 
 data "aws_iam_policy_document" "service_role_trustee" {
@@ -27,15 +27,21 @@ data "aws_iam_policy_document" "service_role_trustee" {
 
 resource "aws_iam_role" "service_role" {
   assume_role_policy  = data.aws_iam_policy_document.service_role_trustee.json
-  managed_policy_arns = [aws_iam_policy.service_policy.id, "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"]
+  managed_policy_arns = ["arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"]
   name                = "oxide_service_role"
+}
+
+resource "aws_iam_role" "task_role" {
+  assume_role_policy  = data.aws_iam_policy_document.service_role_trustee.json
+  managed_policy_arns = [aws_iam_policy.task_policy.arn]
+  name                = "oxide_task_role"
 }
 
 resource "aws_ecs_task_definition" "oxide_server" {
   family = "oxide_server"
   container_definitions = jsonencode([{
     name      = "oxide_server"
-    image     = "${aws_ecr_repository.oxide_server.repository_url}:${random_id.docker_img_tag.hex}"
+    image     = "${aws_ecr_repository.oxide_server.repository_url}:${null_resource.docker_img_build.triggers.docker_img_tag}"
     essential = true
     portMappings = [{
       hostPort      = 3000,
@@ -74,6 +80,7 @@ resource "aws_ecs_task_definition" "oxide_server" {
   }
   network_mode       = "awsvpc"
   execution_role_arn = aws_iam_role.service_role.arn
+  task_role_arn      = aws_iam_role.task_role.arn
 }
 
 resource "aws_ecs_cluster" "oxide_server" {
