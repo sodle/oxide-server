@@ -1,6 +1,6 @@
 on:
   schedule:
-    - cron: "08 15 * * *"
+    - cron: "20 08 * * *"
 jobs:
   tf-plan:
     name: Terraform Plan
