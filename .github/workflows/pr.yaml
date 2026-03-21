@@ -35,4 +35,15 @@ jobs:
       - run: echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(grep -oP '(?<=UBUNTU_CODENAME=).*' /etc/os-release || lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
       - run: sudo apt update && sudo apt install -y terraform
       - working-directory: infra
-        run: terraform init && terraform plan
+        run: terraform init && terraform plan -out=tf.plan && terraform show -no-color tf.plan > ../terraform-plan.txt
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            const plan = fs.readSync("terraform-plan.txt");
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `# Terraform Plan Output \`\`\`${plan}\`\`\``
+            })
+
