@@ -75,7 +75,7 @@ resource "aws_ecs_task_definition" "oxide_server" {
       },
       {
         name  = "RUST_LOG"
-        value = "debug"
+        value = "info"
       }
     ]
   }])
