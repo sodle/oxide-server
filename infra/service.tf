@@ -98,7 +98,7 @@ resource "aws_ecs_cluster" "oxide_server" {
 resource "aws_ecs_service" "oxide_server" {
   name            = "oxide_server"
   cluster         = aws_ecs_cluster.oxide_server.id
-  task_definition = aws_ecs_task_definition.oxide_server.id
+  task_definition = "${aws_ecs_task_definition.oxide_server.id}:${aws_ecs_task_definition.oxide_server.revision}"
   network_configuration {
     subnets         = [aws_subnet.private_a.id, aws_subnet.private_b.id]
     security_groups = [aws_security_group.oxide_server.id]

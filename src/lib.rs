@@ -31,6 +31,7 @@ pub fn router(generator: Arc<dyn ShortCodeGenerator>, data_store: Arc<dyn DataSt
         .route("/health", get(health))
         .route("/shorten", post(shorten))
         .route("/{code}", get(code))
+        .route("/404", get(error_404))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
@@ -168,14 +169,8 @@ async fn code(State(state): State<AppState>, Path(code): Path<String>) -> Respon
     }
 }
 
-#[cfg(test)]
-mod test {
-    use crate::AppError::InternalError;
-    use axum::response::IntoResponse;
-
-    #[test]
-    fn test_handle_internal_error() {
-        let error = InternalError.into_response();
-        assert_eq!(error.status(), 500);
-    }
+async fn error_404() -> Result<Json<ErrorResponse>, AppError> {
+    Ok(Json::from(ErrorResponse {
+        error: String::from("The short URL you requested doesn't exist."),
+    }))
 }

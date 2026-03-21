@@ -72,6 +72,14 @@ resource "aws_cloudfront_distribution" "cloudfront" {
     cache_policy_id        = aws_cloudfront_cache_policy.default.id
   }
 
+  web_acl_id = aws_wafv2_web_acl.waf.arn
+
+  custom_error_response {
+    error_code         = 404
+    response_code      = 404
+    response_page_path = "/404"
+  }
+
   depends_on = [aws_s3_bucket_acl.cloudfront_logs]
 }
 
