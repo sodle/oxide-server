@@ -38,6 +38,7 @@ jobs:
         run: terraform init && terraform plan -out=tf.plan && terraform show -no-color tf.plan > ../terraform-plan.txt
       - uses: actions/github-script@v8
         with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
             const plan = require("fs").readFileSync("terraform-plan.txt");
             github.rest.issues.createComment({
