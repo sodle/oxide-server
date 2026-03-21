@@ -50,6 +50,6 @@ async fn test_collision() {
     assert_ne!(first_short_code, second_short_code);
 
     let visit_response = follow_short_code(&server, second_short_code.as_str()).await;
-    assert_eq!(visit_response.status_code(), 308);
+    assert_eq!(visit_response.status_code(), 302);
     assert_eq!(visit_response.header("Location"), "https://scoott.blog");
 }
