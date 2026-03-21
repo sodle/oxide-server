@@ -30,7 +30,7 @@ async fn test_hit() {
         &shorten_response.json::<ShortenUrlOutput>().short_code,
     )
     .await;
-    assert_eq!(visit_response.status_code(), 308);
+    assert_eq!(visit_response.status_code(), 302);
     assert_eq!(visit_response.header("Location"), "https://google.com");
 }
 

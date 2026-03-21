@@ -1,6 +1,7 @@
 on: pull_request
 permissions:
   id-token: write
+  pull-requests: write
 jobs:
   test:
     name: Unit Tests
@@ -25,7 +26,6 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: '1'
-          sparse-checkout: infra
       - uses: aws-actions/configure-aws-credentials@main
         with:
           role-to-assume: arn:aws:iam::374353987873:role/oxide-gh-plan
@@ -35,4 +35,16 @@ jobs:
       - run: echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(grep -oP '(?<=UBUNTU_CODENAME=).*' /etc/os-release || lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
       - run: sudo apt update && sudo apt install -y terraform
       - working-directory: infra
-        run: terraform init && terraform plan
+        run: terraform init && terraform plan -out=tf.plan && terraform show -no-color tf.plan > ../terraform-plan.txt
+      - uses: actions/github-script@v8
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            const plan = require("fs").readFileSync("terraform-plan.txt");
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `# Terraform Plan Output \n\n \`\`\`\n${plan}\n\`\`\``
+            })
+

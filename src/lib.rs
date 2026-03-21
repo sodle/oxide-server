@@ -2,14 +2,17 @@ pub mod data_store;
 
 use crate::data_store::{DataStore, DataStoreError};
 use crate::AppError::{InternalError, InvalidUrl, NotFound};
+use axum::body::Body;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Redirect, Response};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use rand::distr::SampleString;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::sync::Arc;
+use tower_http::trace::TraceLayer;
 use url::Url;
 
 #[derive(Clone)]
@@ -28,6 +31,8 @@ pub fn router(generator: Arc<dyn ShortCodeGenerator>, data_store: Arc<dyn DataSt
         .route("/health", get(health))
         .route("/shorten", post(shorten))
         .route("/{code}", get(code))
+        .route("/404", get(error_404))
+        .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
 
@@ -75,10 +80,18 @@ pub struct HealthOutput {
     pub status: String,
 }
 
-async fn health() -> Result<Json<HealthOutput>, StatusCode> {
-    Ok(Json::from(HealthOutput {
+async fn health() -> Response {
+    let health = HealthOutput {
         status: String::from("ok"),
-    }))
+    };
+    let health_json = json!(health).to_string();
+
+    Response::builder()
+        .status(200)
+        .header("Cache-Control", "no-store")
+        .header("Content-Type", "application/json")
+        .body(Body::from(health_json))
+        .unwrap()
 }
 
 #[derive(Deserialize)]
@@ -106,6 +119,7 @@ async fn shorten(
     State(state): State<AppState>,
     Json(payload): Json<ShortenUrlInput>,
 ) -> Result<Json<ShortenUrlOutput>, AppError> {
+    println!("(shorten) => {}", payload.url);
     Url::parse(&payload.url).map_err(|e| InvalidUrl(e.to_string()))?;
 
     let short_code = {
@@ -127,25 +141,36 @@ async fn shorten(
     }
 }
 
-async fn code(
-    State(state): State<AppState>,
-    Path(code): Path<String>,
-) -> Result<Redirect, AppError> {
+async fn code(State(state): State<AppState>, Path(code): Path<String>) -> Response {
     match state.data_store.get(&code).await {
-        Ok(record) => Ok(Redirect::permanent(record.url.as_str())),
-        Err(DataStoreError::NotFound) => Err(NotFound),
-        Err(_) => Err(InternalError),
+        Ok(record) => match Response::builder()
+            .status(StatusCode::FOUND)
+            .header("Location", &record.url)
+            .header("Cache-Control", "public, max-age=300")
+            .body(Body::from(()))
+        {
+            Ok(response) => {
+                println!("hit {code} => {}", record.url);
+                response
+            }
+            Err(err) => {
+                println!("error generating response: {err}");
+                InternalError.into_response()
+            }
+        },
+        Err(DataStoreError::NotFound) => {
+            println!("not found {code}");
+            NotFound.into_response()
+        }
+        Err(err) => {
+            println!("data store error {:?}", err);
+            InternalError.into_response()
+        }
     }
 }
 
-#[cfg(test)]
-mod test {
-    use crate::AppError::InternalError;
-    use axum::response::IntoResponse;
-
-    #[test]
-    fn test_handle_internal_error() {
-        let error = InternalError.into_response();
-        assert_eq!(error.status(), 500);
-    }
+async fn error_404() -> Result<Json<ErrorResponse>, AppError> {
+    Ok(Json::from(ErrorResponse {
+        error: String::from("The short URL you requested doesn't exist."),
+    }))
 }

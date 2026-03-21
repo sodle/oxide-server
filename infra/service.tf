@@ -26,15 +26,23 @@ data "aws_iam_policy_document" "service_role_trustee" {
 }
 
 resource "aws_iam_role" "service_role" {
-  assume_role_policy  = data.aws_iam_policy_document.service_role_trustee.json
-  managed_policy_arns = ["arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"]
-  name                = "oxide_service_role"
+  assume_role_policy = data.aws_iam_policy_document.service_role_trustee.json
+  name               = "oxide_service_role"
+}
+
+resource "aws_iam_role_policy_attachments_exclusive" "service_role" {
+  policy_arns = ["arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"]
+  role_name   = aws_iam_role.service_role.name
 }
 
 resource "aws_iam_role" "task_role" {
-  assume_role_policy  = data.aws_iam_policy_document.service_role_trustee.json
-  managed_policy_arns = [aws_iam_policy.task_policy.arn]
-  name                = "oxide_task_role"
+  assume_role_policy = data.aws_iam_policy_document.service_role_trustee.json
+  name               = "oxide_task_role"
+}
+
+resource "aws_iam_role_policy_attachments_exclusive" "task_role" {
+  policy_arns = [aws_iam_policy.task_policy.arn]
+  role_name   = aws_iam_role.task_role.name
 }
 
 resource "aws_ecs_task_definition" "oxide_server" {
@@ -67,7 +75,7 @@ resource "aws_ecs_task_definition" "oxide_server" {
       },
       {
         name  = "RUST_LOG"
-        value = "debug"
+        value = "info"
       }
     ]
   }])
@@ -90,7 +98,7 @@ resource "aws_ecs_cluster" "oxide_server" {
 resource "aws_ecs_service" "oxide_server" {
   name            = "oxide_server"
   cluster         = aws_ecs_cluster.oxide_server.id
-  task_definition = aws_ecs_task_definition.oxide_server.id
+  task_definition = "${aws_ecs_task_definition.oxide_server.id}:${aws_ecs_task_definition.oxide_server.revision}"
   network_configuration {
     subnets         = [aws_subnet.private_a.id, aws_subnet.private_b.id]
     security_groups = [aws_security_group.oxide_server.id]
