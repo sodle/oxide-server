@@ -7,7 +7,7 @@ permissions:
 jobs:
   tf-apply:
     name: Terraform Apply
-    runs-on: ubuntu-latest-arm
+    runs-on: ubuntu-22.04-arm
     steps:
       - uses: actions/checkout@v6
         with:
