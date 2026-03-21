@@ -1,4 +1,6 @@
 on: pull_request
+permissions:
+  id-token: write
 jobs:
   test:
     name: Unit Tests
@@ -24,6 +26,10 @@ jobs:
         with:
           fetch-depth: '1'
           sparse-checkout: infra
+      - uses: aws-actions/configure-aws-credentials@main
+        with:
+          role-to-assume: arn:aws:iam::374353987873:role/oxide-gh-plan
+          aws-region: us-west-2
       - run: sudo apt update && sudo apt upgrade -y && sudo apt install -y gnupg software-properties-common
       - run: wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | sudo tee /usr/share/keyrings/hashicorp-archive-keyring.gpg > /dev/null
       - run: echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(grep -oP '(?<=UBUNTU_CODENAME=).*' /etc/os-release || lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
