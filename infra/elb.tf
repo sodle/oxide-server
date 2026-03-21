@@ -29,20 +29,18 @@ resource "aws_alb_listener" "oxide" {
   }
 }
 
+data "aws_ec2_managed_prefix_list" "cloudfront" {
+  name = "com.amazonaws.global.cloudfront.origin-facing"
+}
+
 resource "aws_security_group" "oxide_lb" {
   name   = "Oxide LB Public"
   vpc_id = aws_vpc.vpc.id
   ingress {
-    cidr_blocks = ["0.0.0.0/0"]
-    from_port   = 80
-    to_port     = 80
-    protocol    = "TCP"
-  }
-  ingress {
-    cidr_blocks = ["0.0.0.0/0"]
-    from_port   = 443
-    to_port     = 443
-    protocol    = "TCP"
+    prefix_list_ids = [data.aws_ec2_managed_prefix_list.cloudfront.id]
+    from_port       = 80
+    to_port         = 80
+    protocol        = "TCP"
   }
   egress {
     cidr_blocks = [aws_vpc.vpc.cidr_block]
