@@ -10,8 +10,8 @@ resource "aws_ecr_repository" "oxide_server" {
 
 locals {
   dockerfile_hash = filebase64sha512("${path.module}/../Dockerfile")
-  src_dir_hash = sha512(join("", [
-    for f in sort(fileset("${path.module}/../src", "**.rs")) : filesha512("${path.module}/../src/${f}")
+  src_dir_hash = base64sha512(join("", [
+    for f in sort(fileset("${path.module}/../src", "**.rs")) : filebase64sha512("${path.module}/../src/${f}")
   ]))
 }
 
