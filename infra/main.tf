@@ -19,6 +19,7 @@ terraform {
   backend "s3" {
     bucket = "sodle-oxide-state"
     region = "us-west-2"
+    key    = "terraform.tfstate"
   }
 }
 
