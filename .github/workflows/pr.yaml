@@ -47,4 +47,3 @@ jobs:
               repo: context.repo.repo,
               body: `# Terraform Plan Output \n\n \`\`\`\n${plan}\n\`\`\``
             })
-
