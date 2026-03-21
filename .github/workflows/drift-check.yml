@@ -1,6 +1,6 @@
 on:
   schedule:
-    - cron: "00 14 * * *"
+    - cron: "00 16 * * *"
 permissions:
   id-token: write
 jobs:
