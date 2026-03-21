@@ -15,6 +15,12 @@ terraform {
       version = "3.2.4"
     }
   }
+
+  backend "s3" {
+    bucket = "sodle-oxide-state"
+    region = "us-west-2"
+    key    = "terraform.tfstate"
+  }
 }
 
 provider "aws" {

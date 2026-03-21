@@ -1,0 +1,38 @@
+on: pull_request
+permissions:
+  id-token: write
+jobs:
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: '1'
+      - run: cargo test
+  lint:
+    name: Lint (clippy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: '1'
+      - run: cargo clippy
+  tf-plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: '1'
+          sparse-checkout: infra
+      - uses: aws-actions/configure-aws-credentials@main
+        with:
+          role-to-assume: arn:aws:iam::374353987873:role/oxide-gh-plan
+          aws-region: us-west-2
+      - run: sudo apt update && sudo apt install -y gnupg
+      - run: wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | sudo tee /usr/share/keyrings/hashicorp-archive-keyring.gpg > /dev/null
+      - run: echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(grep -oP '(?<=UBUNTU_CODENAME=).*' /etc/os-release || lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+      - run: sudo apt update && sudo apt install -y terraform
+      - working-directory: infra
+        run: terraform init && terraform plan
