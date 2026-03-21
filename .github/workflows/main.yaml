@@ -15,7 +15,7 @@ jobs:
           sparse-checkout: infra
       - uses: aws-actions/configure-aws-credentials@main
         with:
-          role-to-assume: arn:aws:iam::374353987873:role/oxide-gh-deploy
+          role-to-assume: arn:aws:iam::374353987873:role/oxide-gh-deployment
           aws-region: us-west-2
       - run: sudo apt update && sudo apt install -y gnupg
       - run: wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | sudo tee /usr/share/keyrings/hashicorp-archive-keyring.gpg > /dev/null
