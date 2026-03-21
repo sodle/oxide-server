@@ -39,7 +39,7 @@ jobs:
       - uses: actions/github-script@v8
         with:
           script: |
-            const plan = require("fs").readSync("terraform-plan.txt");
+            const plan = require("fs").readFileSync("terraform-plan.txt");
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
