@@ -10,15 +10,16 @@ resource "aws_ecr_repository" "oxide_server" {
 
 locals {
   dockerfile_hash = filebase64sha512("${path.module}/../Dockerfile")
-  src_dir_hash = base64sha512(join("", [
-    for f in sort(fileset("${path.module}/../src", "**.rs")) : filebase64sha512("${path.module}/../src/${f}")
-  ]))
+  src_file_hashes = {
+    for f in sort(fileset("${path.module}/../src", "**/*.rs")) :
+    f => filebase64sha512("${path.module}/../src/${f}")
+  }
 }
 
 resource "random_id" "docker_img_tag" {
   keepers = {
     dockerfile_hash = local.dockerfile_hash
-    src_dir_hash    = local.src_dir_hash
+    src_file_hashes = jsonencode(local.src_file_hashes)
   }
   byte_length = 2
 }
