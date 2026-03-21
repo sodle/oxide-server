@@ -17,29 +17,14 @@ resource "aws_alb_target_group" "oxide" {
 
 resource "aws_alb_listener" "oxide" {
   load_balancer_arn = aws_lb.oxide.arn
-  protocol          = "HTTPS"
-  port              = 443
-  certificate_arn   = aws_acm_certificate.lb.arn
+  protocol          = "HTTP"
+  port              = 80
   default_action {
     type = "forward"
     forward {
       target_group {
         arn = aws_alb_target_group.oxide.arn
       }
-    }
-  }
-}
-
-resource "aws_alb_listener" "oxide_http_redirect" {
-  load_balancer_arn = aws_lb.oxide.arn
-  protocol          = "HTTP"
-  port              = 80
-  default_action {
-    type = "redirect"
-    redirect {
-      status_code = "HTTP_301"
-      protocol    = "HTTPS"
-      port        = 443
     }
   }
 }
@@ -65,9 +50,4 @@ resource "aws_security_group" "oxide_lb" {
     to_port     = 3000
     protocol    = "TCP"
   }
-}
-
-resource "aws_acm_certificate" "lb" {
-  domain_name       = "oxide.sjodle.com"
-  validation_method = "DNS"
 }
