@@ -8,10 +8,13 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use metrics::{counter, gauge, histogram};
+use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use rand::distr::SampleString;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
+use std::time::Instant;
 use tower_http::trace::TraceLayer;
 use url::Url;
 
@@ -19,21 +22,40 @@ use url::Url;
 struct AppState {
     generator: Arc<dyn ShortCodeGenerator>,
     data_store: Arc<dyn DataStore>,
+    prometheus_handle: PrometheusHandle,
 }
 
 pub fn router(generator: Arc<dyn ShortCodeGenerator>, data_store: Arc<dyn DataStore>) -> Router {
+    let builder = PrometheusBuilder::new();
+    let prometheus_handle = builder
+        .install_recorder()
+        .expect("Couldn't install Prometheus recorder");
+
     let state = AppState {
         generator,
         data_store,
+        prometheus_handle,
     };
+
+    gauge!("up").set(1);
 
     Router::new()
         .route("/health", get(health))
         .route("/shorten", post(shorten))
         .route("/{code}", get(code))
         .route("/404", get(error_404))
+        .route("/metrics", get(metrics))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
+}
+
+async fn metrics(State(state): State<AppState>) -> Response<String> {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("Cache-Control", "no-store")
+        .header("Content-Type", "text/plain")
+        .body(state.prometheus_handle.render())
+        .unwrap()
 }
 
 enum AppError {
@@ -120,7 +142,13 @@ async fn shorten(
     Json(payload): Json<ShortenUrlInput>,
 ) -> Result<Json<ShortenUrlOutput>, AppError> {
     println!("(shorten) => {}", payload.url);
-    Url::parse(&payload.url).map_err(|e| InvalidUrl(e.to_string()))?;
+    match Url::parse(&payload.url) {
+        Ok(_) => (),
+        Err(err) => {
+            counter!("invalid_url_rejected_total").increment(1);
+            return Err(InvalidUrl(err.to_string()));
+        }
+    };
 
     let short_code = {
         let short_code = loop {
@@ -136,12 +164,16 @@ async fn shorten(
     };
 
     match state.data_store.put(&short_code, &payload.url).await {
-        Ok(_) => Ok(Json::from(ShortenUrlOutput { short_code })),
+        Ok(_) => {
+            counter!("urls_shortened_total").increment(1);
+            Ok(Json::from(ShortenUrlOutput { short_code }))
+        }
         Err(_) => Err(InternalError),
     }
 }
 
 async fn code(State(state): State<AppState>, Path(code): Path<String>) -> Response {
+    let start = Instant::now();
     match state.data_store.get(&code).await {
         Ok(record) => match Response::builder()
             .status(StatusCode::FOUND)
@@ -151,6 +183,8 @@ async fn code(State(state): State<AppState>, Path(code): Path<String>) -> Respon
         {
             Ok(response) => {
                 println!("hit {code} => {}", record.url);
+                let duration = start.elapsed();
+                histogram!("url_lookup_duration_ms", "status" => "found").record(duration);
                 response
             }
             Err(err) => {
@@ -160,6 +194,9 @@ async fn code(State(state): State<AppState>, Path(code): Path<String>) -> Respon
         },
         Err(DataStoreError::NotFound) => {
             println!("not found {code}");
+            let duration = start.elapsed();
+            histogram!("url_lookup_duration_ms", "status" => "not_found").record(duration);
+            counter!("url_not_found_total").increment(1);
             NotFound.into_response()
         }
         Err(err) => {
