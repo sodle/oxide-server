@@ -22,3 +22,14 @@ jobs:
       - run: sudo apt update && sudo apt install -y terraform
       - working-directory: infra
         run: terraform init && terraform apply -auto-approve
+      - name: Annotate Grafana
+        run: |
+          curl -X POST \
+            -H "Authorization: Bearer ${{ secrets.GRAFANA_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "text": "Deploy ${{ github.sha }}",
+              "tags": ["deploy", "terraform"],
+              "time": '"$(date +%s%3N)"'
+            }' \
+            https://sodle.grafana.net/api/annotations

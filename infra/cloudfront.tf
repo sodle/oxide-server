@@ -111,3 +111,13 @@ resource "aws_cloudfront_vpc_origin" "alb" {
     }
   }
 }
+
+resource "aws_cloudfront_monitoring_subscription" "cloudfront" {
+  distribution_id = aws_cloudfront_distribution.cloudfront.id
+
+  monitoring_subscription {
+    realtime_metrics_subscription_config {
+      realtime_metrics_subscription_status = "Enabled"
+    }
+  }
+}

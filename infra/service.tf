@@ -93,6 +93,11 @@ resource "aws_ecs_task_definition" "oxide_server" {
 
 resource "aws_ecs_cluster" "oxide_server" {
   name = "oxide_server"
+
+  setting {
+    name  = "containerInsights"
+    value = "enabled"
+  }
 }
 
 resource "aws_ecs_service" "oxide_server" {
