@@ -29,6 +29,24 @@ resource "aws_alb_listener" "oxide" {
   }
 }
 
+resource "aws_alb_listener_rule" "block_metrics_and_health" {
+  listener_arn = aws_alb_listener.oxide.arn
+  condition {
+    path_pattern {
+      values = ["/health", "/metrics"]
+    }
+  }
+  action {
+    type = "fixed-response"
+
+    fixed_response {
+      content_type = "text/plain"
+      status_code  = "404"
+      message_body = "NOT FOUND"
+    }
+  }
+}
+
 data "aws_ec2_managed_prefix_list" "cloudfront" {
   name = "com.amazonaws.global.cloudfront.origin-facing"
 }
