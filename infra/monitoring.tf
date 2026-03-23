@@ -15,8 +15,17 @@ data "aws_iam_policy_document" "grafana_cloudwatch_role_trustee" {
 
 data "aws_iam_policy_document" "grafana_cloudwatch_role" {
   statement {
-    actions   = ["cloudwatch:Describe*", "cloudwatch:Get*", "cloudwatch:List*", "logs:Describe*", "logs:Get*", "logs:List*"]
+    actions = [
+      "cloudwatch:Describe*", "cloudwatch:Get*", "cloudwatch:List*",
+      "logs:Describe*", "logs:Get*", "logs:List*",
+      "athena:Get*", "athena:List*", "athena:StartQueryExecution",
+      "glue:Get*", "glue:List*", "glue:Describe*",
+    ]
     resources = ["*"]
+  }
+  statement {
+    actions   = ["s3:GetObject", "s3:ListBucket"]
+    resources = ["arn:aws:s3:::sodle-cost-usage-report", "arn:aws:s3:::sodle-cost-usage-report/*"]
   }
 }
 
