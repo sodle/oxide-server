@@ -2,6 +2,7 @@ mod common;
 
 use crate::common::{follow_short_code, shorten_url};
 use axum_test::TestServer;
+use metrics_exporter_prometheus::PrometheusBuilder;
 use oxide_server::data_store::in_memory::InMemoryDataStore;
 use oxide_server::{
     router, ErrorResponse, HealthOutput, RandomShortCodeGenerator, ShortenUrlOutput,
@@ -11,7 +12,12 @@ use std::sync::Arc;
 
 async fn test_server() -> TestServer {
     let store = Arc::new(InMemoryDataStore::new());
-    TestServer::new(router(Arc::new(RandomShortCodeGenerator), store))
+    let prometheus_handle = PrometheusBuilder::new().build_recorder().handle();
+    TestServer::new(router(
+        Arc::new(RandomShortCodeGenerator),
+        store,
+        prometheus_handle,
+    ))
 }
 
 #[tokio::test]

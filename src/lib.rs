@@ -9,7 +9,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use metrics::{counter, gauge, histogram};
-use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
+use metrics_exporter_prometheus::PrometheusHandle;
 use rand::distr::SampleString;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -25,12 +25,11 @@ struct AppState {
     prometheus_handle: PrometheusHandle,
 }
 
-pub fn router(generator: Arc<dyn ShortCodeGenerator>, data_store: Arc<dyn DataStore>) -> Router {
-    let builder = PrometheusBuilder::new();
-    let prometheus_handle = builder
-        .install_recorder()
-        .expect("Couldn't install Prometheus recorder");
-
+pub fn router(
+    generator: Arc<dyn ShortCodeGenerator>,
+    data_store: Arc<dyn DataStore>,
+    prometheus_handle: PrometheusHandle,
+) -> Router {
     let state = AppState {
         generator,
         data_store,

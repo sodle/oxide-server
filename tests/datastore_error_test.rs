@@ -2,15 +2,18 @@ mod common;
 use crate::common::{follow_short_code, shorten_url};
 use async_trait::async_trait;
 use axum_test::TestServer;
+use metrics_exporter_prometheus::PrometheusBuilder;
 use oxide_server::data_store::in_memory::InMemoryDataStore;
 use oxide_server::data_store::{DataStore, DataStoreError, UrlRecord};
 use oxide_server::{router, RandomShortCodeGenerator, ShortenUrlOutput};
 use std::sync::Arc;
 
 async fn test_fragile_server(allow_get: bool, allow_put: bool, allow_exists: bool) -> TestServer {
+    let prometheus_handle = PrometheusBuilder::new().build_recorder().handle();
     TestServer::new(router(
         Arc::new(RandomShortCodeGenerator),
         Arc::new(FragileDataStore::new(allow_get, allow_put, allow_exists)),
+        prometheus_handle,
     ))
 }
 
