@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use std::fmt::{Display, Formatter};
 
 pub mod dynamodb;
 pub mod in_memory;
@@ -13,6 +14,12 @@ pub enum DataStoreError {
     NotFound,
     ConnectionError,
     DataTypeError,
+}
+
+impl Display for DataStoreError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 #[async_trait]

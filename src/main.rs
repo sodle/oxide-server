@@ -3,6 +3,7 @@ use oxide_server::data_store::dynamodb::DynamoDbDataStore;
 use oxide_server::{router, RandomShortCodeGenerator};
 use std::sync::Arc;
 use tokio::signal;
+use tracing_subscriber::fmt::format::FmtSpan;
 
 async fn shutdown_signal() {
     let ctrl_c = async {
@@ -36,7 +37,11 @@ async fn main() {
         .install_recorder()
         .expect("Couldn't install Prometheus recorder");
 
-    tracing_subscriber::fmt::init(); // Initialize the subscriber.
+    tracing_subscriber::fmt()
+        .with_span_events(FmtSpan::CLOSE)
+        .json()
+        .init();
+
     dotenv::dotenv().ok();
     let bind_addr = "0.0.0.0:3000";
 
@@ -44,7 +49,8 @@ async fn main() {
 
     let listener = tokio::net::TcpListener::bind(bind_addr).await.unwrap();
     let router = router(Arc::new(RandomShortCodeGenerator), store, prometheus_handle);
-    println!("Listening on {bind_addr}");
+
+    tracing::info!("Listening on {bind_addr}");
     axum::serve(listener, router)
         .with_graceful_shutdown(shutdown_signal())
         .await

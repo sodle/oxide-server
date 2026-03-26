@@ -16,6 +16,7 @@ use serde_json::json;
 use std::sync::Arc;
 use std::time::Instant;
 use tower_http::trace::TraceLayer;
+use tracing::{error, info, instrument, warn};
 use url::Url;
 
 #[derive(Clone)]
@@ -48,6 +49,7 @@ pub fn router(
         .with_state(state)
 }
 
+#[instrument(skip(state))]
 async fn metrics(State(state): State<AppState>) -> Response<String> {
     Response::builder()
         .status(StatusCode::OK)
@@ -101,6 +103,7 @@ pub struct HealthOutput {
     pub status: String,
 }
 
+#[instrument()]
 async fn health() -> Response {
     let health = HealthOutput {
         status: String::from("ok"),
@@ -115,7 +118,7 @@ async fn health() -> Response {
         .unwrap()
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct ShortenUrlInput {
     url: String,
 }
@@ -136,15 +139,16 @@ impl ShortCodeGenerator for RandomShortCodeGenerator {
     }
 }
 
+#[instrument(skip(state), fields(url = %payload.url))]
 async fn shorten(
     State(state): State<AppState>,
     Json(payload): Json<ShortenUrlInput>,
 ) -> Result<Json<ShortenUrlOutput>, AppError> {
-    println!("(shorten) => {}", payload.url);
     match Url::parse(&payload.url) {
         Ok(_) => (),
         Err(err) => {
             counter!("invalid_url_rejected_total").increment(1);
+            warn!(message = "rejected invalid URL", url = payload.url);
             return Err(InvalidUrl(err.to_string()));
         }
     };
@@ -154,11 +158,20 @@ async fn shorten(
             let candidate = state.generator.generate();
             match state.data_store.exists(&candidate).await {
                 Ok(false) => break candidate,
-                Ok(true) => println!("(duplicate, retry) {candidate}"),
+                Ok(true) => {
+                    warn!(
+                        message = "reshuffling duplicate short code",
+                        short_code = candidate
+                    );
+                }
                 Err(_) => return Err(InternalError),
             }
         };
-        println!("(shorten) {short_code} -> {}", payload.url);
+        info!(
+            message = "shortened URL",
+            short_code = short_code,
+            url = payload.url
+        );
         short_code
     };
 
@@ -171,6 +184,7 @@ async fn shorten(
     }
 }
 
+#[instrument(skip(state), fields(short_code = %code))]
 async fn code(State(state): State<AppState>, Path(code): Path<String>) -> Response {
     let start = Instant::now();
     match state.data_store.get(&code).await {
@@ -181,30 +195,43 @@ async fn code(State(state): State<AppState>, Path(code): Path<String>) -> Respon
             .body(Body::from(()))
         {
             Ok(response) => {
-                println!("hit {code} => {}", record.url);
+                info!(
+                    message = "found short code",
+                    short_code = code,
+                    url = record.url
+                );
                 let duration = start.elapsed();
                 histogram!("url_lookup_duration_ms", "status" => "found").record(duration);
                 response
             }
             Err(err) => {
-                println!("error generating response: {err}");
+                error!(
+                    message = "error generating response",
+                    short_code = code,
+                    error = err.to_string()
+                );
                 InternalError.into_response()
             }
         },
         Err(DataStoreError::NotFound) => {
-            println!("not found {code}");
+            warn!(message = "short code not found", short_code = code);
             let duration = start.elapsed();
             histogram!("url_lookup_duration_ms", "status" => "not_found").record(duration);
             counter!("url_not_found_total").increment(1);
             NotFound.into_response()
         }
         Err(err) => {
-            println!("data store error {:?}", err);
+            error!(
+                message = "error accessing data store",
+                short_code = code,
+                error = err.to_string()
+            );
             InternalError.into_response()
         }
     }
 }
 
+#[instrument()]
 async fn error_404() -> Result<Json<ErrorResponse>, AppError> {
     Ok(Json::from(ErrorResponse {
         error: String::from("The short URL you requested doesn't exist."),
